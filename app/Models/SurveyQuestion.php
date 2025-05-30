@@ -8,9 +8,11 @@ class SurveyQuestion extends Model
 {
     protected $fillable = ['survey_id', 'question_text', 'question_type', 'order'];
 
-    public function survey() {
-        return $this->belongsTo(Survey::class);
-    }
+
+    public function surveys()
+{
+    return $this->belongsToMany(Survey::class, 'survey_question_assignments')->withPivot('order');
+}
 
     public function options() {
         return $this->hasMany(SurveyQuestionOption::class);

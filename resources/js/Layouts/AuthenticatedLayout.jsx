@@ -24,9 +24,11 @@ export default function SidebarLayout({ title, children }) {
           Dashboard
         </NavLink>
         <NavLink href={route('create-survey')} active={route().current('create-survey')}>
-          Create Survey
+          Buat Survey
         </NavLink>
-        <NavLink href={route('dashboard')}>Settings</NavLink>
+        <NavLink href={route('bank-soal')} active={route().current('bank-soal')}>
+          Bank Soal
+        </NavLink>
       </aside>
 
       {/* Content Area with Header */}
@@ -92,10 +94,10 @@ export default function SidebarLayout({ title, children }) {
                 Dashboard
               </Link>
               <Link href="/my-survey" className="block px-3 py-2 bg-white rounded-md hover:bg-gray-200">
-                My Survey
+                Buat Survey
               </Link>
-              <Link href="/settings" className="block px-3 py-2 bg-white rounded-md hover:bg-gray-200">
-                Settings
+              <Link href="/BankSoal" className="block px-3 py-2 bg-white rounded-md hover:bg-gray-200">
+                BankSoal
               </Link>
             </nav>
           </aside>

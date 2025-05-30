@@ -23,4 +23,15 @@ class Survey extends Model
     public function responses() {
         return $this->hasMany(Response::class);
     }
+
+    public function questionAssignments()
+{
+    return $this->hasMany(\App\Models\SurveyQuestionAssignment::class);
+}
+
+public function assignedQuestions()
+{
+    return $this->belongsToMany(SurveyQuestion::class, 'survey_question_assignments')->withPivot('order');
+}
+
 }

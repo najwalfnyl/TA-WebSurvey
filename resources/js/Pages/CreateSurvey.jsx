@@ -163,10 +163,10 @@ export default function CreateSurvey({ survey, token }) {
     return (
         <AuthenticatedLayout>
             <Head title="Create Survey" />
-            <div className="py-12 px-7">
+            <div className="py-7 px-7">
                 <div className="p-6 bg-white rounded-lg shadow-md max-w-7xl mx-auto">
                     <div className="border-b pb-2">
-                        <h2 className="text-lg font-bold text-gray-800">Create New Survey</h2>
+                        <h2 className="text-lg font-bold text-gray-800">Buat Survey Baru</h2>
                     </div>
 
                     <div className="flex justify-between items-center border-b pb-2 mt-2">

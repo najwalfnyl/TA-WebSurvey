@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Models\SurveyQuestion;
 use Illuminate\Support\Collection;
 use App\Models\Survey;
 use Inertia\Inertia;
@@ -14,7 +15,7 @@ class SurveyController extends Controller
 {
     public function index()
     {
-        return Survey::with('questions.options')->get();
+        return Survey::withCount('responses')->latest()->get();
     }
 
     public function store(Request $request)
@@ -36,20 +37,17 @@ class SurveyController extends Controller
             'qr_code' => $request->qr_code,
         ]);
 
-        return response()->json([
-            'message' => 'Survey created successfully',
-            'survey' => $survey
-        ]);
+        return response()->json(['message' => 'Survey created successfully', 'survey' => $survey]);
     }
 
     public function show(Survey $survey)
-{
-    return $survey->load([
-        'questions.options',
-        'questions.likertScales',
-        'questions.entities'
-    ]);
-}
+    {
+        return $survey->load([
+            'assignedQuestions.options',
+            'assignedQuestions.likertScales',
+            'assignedQuestions.entities'
+        ]);
+    }
 
 
     public function updateTitle(Request $request, Survey $survey)
@@ -67,53 +65,50 @@ class SurveyController extends Controller
     }
 
     public function showBySlug($slug)
-{
-    $survey = \App\Models\Survey::with([
-        'questions.options',
-        'questions.likertScales',
-        'questions.entities'
-    ])->where('slug', $slug)->first();
+    {
+        $survey = Survey::with([
+            'assignedQuestions.options',
+            'assignedQuestions.likertScales',
+            'assignedQuestions.entities'
+        ])->where('slug', $slug)->first();
 
-    if (!$survey) {
-        return response()->json(['message' => 'Survey not found'], 404);
+        if (!$survey) {
+            return response()->json(['message' => 'Survey not found'], 404);
+        }
+
+        return response()->json($survey);
     }
 
-    return response()->json($survey);
-}
-
     public function getBySlug($slug)
-{
-    $survey = Survey::where('slug', $slug)
-        ->with('questions.options', 'questions.likertScales', 'questions.entities')
-        ->firstOrFail();
+    {
+        $survey = Survey::where('slug', $slug)
+            ->with('assignedQuestions.options', 'assignedQuestions.likertScales', 'assignedQuestions.entities')
+            ->firstOrFail();
 
-    // Debugging: Log data yang dikirim ke frontend
-    Log::info("Survey data:", $survey->toArray());
+        Log::info("Survey data:", $survey->toArray());
 
-    return response()->json($survey);
-}
+        return response()->json($survey);
+    }
 
+     public function analyzeSummary(Survey $survey)
+    {
+        $result = $survey->assignedQuestions->map(function ($q) {
+            $total = $q->answers->count();
+            return [
+                'question' => $q->question_text,
+                'options' => $q->options->map(function ($o) use ($total) {
+                    $count = $o->answers->count();
+                    return [
+                        'option' => $o->option_text,
+                        'count' => $count,
+                        'percent' => $total ? round(($count / $total) * 100) : 0
+                    ];
+                }),
+            ];
+        });
 
-
-    public function analyzeSummary(Survey $survey)
-{
-    $result = $survey->questions->map(function ($q) {
-        $total = $q->answers->count();
-        return [
-            'question' => $q->question_text,
-            'options' => $q->options->map(function ($o) use ($total) {
-                $count = $o->answers->count();
-                return [
-                    'option' => $o->option_text,
-                    'count' => $count,
-                    'percent' => $total ? round(($count / $total) * 100) : 0
-                ];
-            }),
-        ];
-    });
-
-    return response()->json($result);
-}
+        return response()->json($result);
+    }
 
 public function storeQuestions(Request $request, Survey $survey)
 {
@@ -248,7 +243,6 @@ public function options() {
 }
 
 
-
 public function setStatus(Request $request, $slug)
 {
     $survey = Survey::where('slug', $slug)->firstOrFail();
@@ -281,65 +275,64 @@ public function setStatus(Request $request, $slug)
     ]);
 }
 
-
-
 public function storeResponses(Request $request, $slug)
-{
-    $survey = Survey::where('slug', $slug)->firstOrFail();
+    {
+        $survey = Survey::where('slug', $slug)->firstOrFail();
 
-    $data = $request->validate([
-        'answers' => 'required|array',
-    ]);
+        $data = $request->validate([
+    'answers' => 'required|array',
+    'answers.*.answer_text' => 'nullable|string',
+    'answers.*.option_id' => 'nullable|integer|exists:survey_question_options,id',
+    'answers.*.scale' => 'nullable|integer',
+    'answers.*.entity' => 'nullable|string',
+        ]);
 
-    $response = $survey->responses()->create([
-        'survey_respondent_id' => null,
-        'submitted_at' => now(),
-    ]);
+        $response = $survey->responses()->create([
+            'survey_respondent_id' => null,
+            'submitted_at' => now(),
+        ]);
 
-    foreach ($data['answers'] as $questionId => $answerValue) {
-        $question = \App\Models\SurveyQuestion::findOrFail($questionId);
+        foreach ($data['answers'] as $questionId => $answerValue) {
+            $question = SurveyQuestion::findOrFail($questionId);
 
-        if ($question->question_type === 'Likert Scale') {
-            $likertScaleId = $question->likertScales()
-                ->where('scale_value', $answerValue['scale'])
-                ->value('id');
+            if ($question->question_type === 'Likert Scale') {
+                $likertScaleId = $question->likertScales()
+                    ->where('scale_value', $answerValue['scale'])
+                    ->value('id');
 
-            $likertEntityId = $question->entities()
-                ->where('entity_name', $answerValue['entity'])
-                ->value('id');
+                $likertEntityId = $question->entities()
+                    ->where('entity_name', $answerValue['entity'])
+                    ->value('id');
 
-            $response->answers()->create([
-                'question_id' => $questionId,
-                'likert_scale_id' => $likertScaleId,
-                'likert_entity_id' => $likertEntityId,
-            ]);
-        } elseif ($question->question_type === 'Multiple Choices') {
-            $response->answers()->create([
-                'question_id' => $questionId,
-                'option_id' => $answerValue['option_id'],
-            ]);
-        } else {
-            $response->answers()->create([
-                'question_id' => $questionId,
-                'answer_text' => $answerValue['answer_text'],
-            ]);
+                $response->answers()->create([
+                    'question_id' => $questionId,
+                    'likert_scale_id' => $likertScaleId,
+                    'likert_entity_id' => $likertEntityId,
+                ]);
+            } elseif ($question->question_type === 'Multiple Choices') {
+                $response->answers()->create([
+                    'question_id' => $questionId,
+                    'option_id' => $answerValue['option_id'],
+                ]);
+            } else {
+                $response->answers()->create([
+                    'question_id' => $questionId,
+                    'answer_text' => $answerValue['answer_text'],
+                ]);
+            }
         }
+
+        $totalResponses = $survey->responses()->count();
+
+        if ($survey->status_mode === 'Private' && $survey->max_responses && $totalResponses >= $survey->max_responses) {
+            $survey->update(['status' => 'closed']);
+        }
+
+        return response()->json(['message' => 'Responses saved successfully']);
     }
-
-    // ✅ Tambahkan pengecekan setelah jawaban berhasil disimpan
-    $totalResponses = $survey->responses()->count();
-
-    if ($survey->status_mode === 'Private' && $survey->max_responses && $totalResponses >= $survey->max_responses) {
-        $survey->update(['status' => 'closed']);
-    }
-
-    return response()->json(['message' => 'Responses saved successfully']);
-}
-
 
 public function analyze($slug)
 {
-    // Load the survey with related data
     $survey = Survey::with([
         'questions.options',
         'questions.likertScales',
@@ -351,7 +344,6 @@ public function analyze($slug)
 
     $totalResponses = $survey->responses->count();
 
-    // Summary pertanyaan seperti sebelumnya
     $questions = $survey->questions->map(function ($q) use ($survey) {
         $summary = [];
 
@@ -400,41 +392,12 @@ public function analyze($slug)
         ];
     });
 
-    // Data lengkap per responden
-    $respondents = $survey->responses->map(function ($response, $index) use ($survey) {
-        $answers = $survey->questions->mapWithKeys(function ($q) use ($response) {
-            $answer = $response->answers->firstWhere('question_id', $q->id);
-            if (!$answer) return [$q->id => null];
-
-            switch ($q->question_type) {
-                case 'Text':
-                    return [$q->id => $answer->answer_text];
-                case 'Multiple Choices':
-                    return [$q->id => $answer->option?->option_text ?? null];
-                case 'Likert Scale':
-                    $scaleLabel = $answer->likertScale?->scale_label ?? '';
-                    $entityName = $answer->likertEntity?->entity_name ?? '';
-                    return [$q->id => trim("$entityName - $scaleLabel")];
-                default:
-                    return [$q->id => null];
-            }
-        });
-
-        return [
-            'id' => $index + 1,
-            'submitted_at' => $response->submitted_at,
-            'date' => $response->submitted_at->format('d/m/Y'),
-            'time' => $response->submitted_at->format('H:i'),
-            'answers' => $answers->toArray(),
-        ];
-    });
-
     return response()->json([
         'total_responses' => $totalResponses,
         'questions' => $questions,
-        'respondents' => $respondents,
     ]);
 }
+
 
 
 public function respondentData($slug)
@@ -509,6 +472,23 @@ public function dashboard()
         ],
         'surveys' => $surveys
     ]);
+}
+
+public function assignQuestions(Request $request, Survey $survey)
+{
+    $request->validate([
+        'question_ids' => 'required|array',
+        'question_ids.*' => 'exists:survey_questions,id',
+    ]);
+
+    foreach ($request->question_ids as $questionId) {
+        \App\Models\SurveyQuestionAssignment::create([
+            'survey_id' => $survey->id,
+            'survey_question_id' => $questionId,
+        ]);
+    }
+
+    return response()->json(['message' => 'Questions assigned successfully.']);
 }
 
 

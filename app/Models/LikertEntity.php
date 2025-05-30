@@ -18,4 +18,9 @@ class LikertEntity extends Model
     {
         return $this->belongsTo(SurveyQuestion::class, 'question_id');
     }
+
+    public function answers() 
+    {
+        return $this->hasMany(Answer::class, 'likert_entity_id'); // atau 'likert_entity_id'
+    }
 }

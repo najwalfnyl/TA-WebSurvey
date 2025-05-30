@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SurveyController;
+use App\Http\Controllers\QuestionBankController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -42,6 +43,22 @@ Route::get('/api/analyze-survey/{slug}', [SurveyController::class, 'analyze'])->
 
 Route::get('/survey/{slug}/respondents', [SurveyController::class, 'respondentData'])->name('survey.respondents');
 
+Route::get('/bank-soal', function () {
+    return Inertia::render('QuestionBank');
+})->name('bank-soal');
+
+Route::delete('/question-bank/{id}', [QuestionBankController::class, 'destroy']);
+
+
+Route::get('/question-bank', [QuestionBankController::class, 'allQuestions']);
+
+Route::get('/api/bank-questions', [\App\Http\Controllers\QuestionBankController::class, 'allQuestions']);
+
+Route::get('/question-bank/create', function () {
+    return Inertia::render('QuestionBank/CreateQuestion');
+})->middleware('auth');
+
+Route::post('/question-bank/store', [QuestionBankController::class, 'store'])->middleware('auth');
 
 Route::get('/collect-survey/{slug}', function ($slug) {
     $survey = Survey::where('slug', $slug)->firstOrFail();
